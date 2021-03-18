@@ -1,88 +1,237 @@
 import re
 import sys
+import textwrap
+
+# Map of regular expressions used
+remap = {
+    'error': re.compile('^\s+Error \#\d+:.*$'),
+    'table_break': re.compile('^\s*\+[+-]+\+$'),
+    'table_row': re.compile('^\s*\|.+\|$'),
+    'heading_break': re.compile('^\s+\+\-+$'),
+    'heading_row': re.compile('^\s+\|.*$'),
+    'memory_line': re.compile('^[0-9A-F]{4}:\s+.*$'),
+    'jump': re.compile('^Jump from \$.*$'),
+    'jump_next': re.compile('^\s{10}\$.*$'),
+    'rom_reference': re.compile('^ROM-Reference:$'),
+    'address': re.compile('^\s+\$[0-9A-F]{2,4}\/[0-9]{1,5}\:\s+.*$'),
+    'address_range': re.compile('^\s+\$[0-9A-F]{2,4}\-\$[0-9A-F]{2,4}\/[0-9]{1,5}\-[0-9]{1,5}\:\s+.*$'),
+    'address_block': re.compile('^\s+\$[0-9A-F]{2,4}\+\$[0-9A-F]{2,4}\/[0-9]{1,5}\+[0-9]{1,5}\:\s+.*$'),
+    'address_via': re.compile('^\s+\$[0-9A-F]{2,4}\/[0-9]{1,5}\/VIA[12]\+[0-9]{1,2}\:\s+.*$'),
+    'asm': re.compile('^\s[A-Z]{3}\s(\$|\().*$'),
+    'asm_address_block': re.compile('^\s{14}(\$[0-9A-F]{4}\s?)+$'),
+    'info_text': re.compile('^\s(\s{2})?[a-zA-Z0-9\-\/\$\;\:\.\,\(\)/#]+(\s{1,2}[a-zA-Z0-9\>\=\-\/\$\;\:\.\,\(\)\#]+)*$'),
+    'body_text': re.compile('^\s{2}[a-zA-Z0-9\>\=\-\/\$\;\:\.\,\(\)\#]+(\s{1,2}[a-zA-Z0-9\>\=\-\/\$\;\:\.\,\(\)\#]+)*$'),
+    'empty_line': re.compile('^$'),
+}
 
 def chm_html_to_md(filename):
     with open(filename, 'r') as f:
         data = f.read()
 
-    reError = re.compile('^\s+Error \#\d+:.*$')
-    reTableBreak = re.compile('^\s*\+[+-]+\+$')
-    reTableRow = re.compile('^\s*\|.+\|$')
-    reHeadingBreak = re.compile('^\s+\+\-+$')
-    reHeadingRow = re.compile('^\s+\|.*$')
-    reMemoryLine = re.compile('^[0-9A-F]{4}:\s+.*$')
-    reJumpFrom = re.compile('^Jump from \$.*$')
-    reJumpFromNext = re.compile('^\s{10}\$.*$')
-    reRomReference = re.compile('^ROM-Reference:$')
-    reAddress = re.compile('^\s+\$[0-9A-F]{2,4}\/[0-9]{1,5}\:\s+.*$')
-    reAddressRange = re.compile('^\s+\$[0-9A-F]{2,4}\-\$[0-9A-F]{2,4}\/[0-9]{1,5}\-[0-9]{1,5}\:\s+.*$')
-    reAddressBlock = re.compile('^\s+\$[0-9A-F]{2,4}\+\$[0-9A-F]{2,4}\/[0-9]{1,5}\+[0-9]{1,5}\:\s+.*$')
-    reAddressVia = re.compile('^\s+\$[0-9A-F]{2,4}\/[0-9]{1,5}\/VIA[12]\+[0-9]{1,2}\:\s+.*$')
-    reAsm = re.compile('^\s[A-Z]{3}\s(\$|\().*$')
-    reAsmAddressBlock = re.compile('^\s{14}(\$[0-9A-F]{4}\s?)+$')
-    reInfoText = re.compile('^\s(\s{2})?[a-zA-Z0-9\-\/\$\;\:\.\,\(\)/#]+(\s{1,2}[a-zA-Z0-9\>\=\-\/\$\;\:\.\,\(\)\#]+)*$')
-    reBodyText = re.compile('^\s{2}[a-zA-Z0-9\>\=\-\/\$\;\:\.\,\(\)\#]+(\s{1,2}[a-zA-Z0-9\>\=\-\/\$\;\:\.\,\(\)\#]+)*$')
-    reEmptyLine = re.compile('^$')
+    lines = parse_html(data)
+    lines = simplify_lines(lines)
+    print(output_markdown(lines))
 
+def parse_html(data):
+    """
+        Takes the contents of a file, splits it into lines and maps each line 
+        to a regular expression from remap.
+    """
+    res = []
     for line in data.split('\n'):
-        if reError.match(line):
-            # Error ¤123: abc
-            pass
-        elif reTableBreak.match(line):
-            # +----+----+----+
-            pass
-        elif reTableRow.match(line):
-            # | ab | cd | ef |
-            pass
-        elif reHeadingBreak.match(line):
-            # +---------------
-            pass
-        elif reHeadingRow.match(line):
-            # | abc
-            pass
-        elif reMemoryLine.match(line):
-            # 12AF: ...
-            pass
-        elif reJumpFrom.match(line):
-            # Jump from: $1234...
-            pass
-        elif reJumpFromNext.match(line):
-            #            $1234...
-            # TODO only directly after reJumpFrom
-            pass
-        elif reRomReference.match(line):
-            # ROM-Reference:
-            pass
-        elif reAddress.match(line):
-            #  $1234/65432: abc
-            pass
-        elif reAddressRange.match(line):
-            #  $1234-$2345/456-567: abc
-            pass
-        elif reAddressBlock.match(line):
-            #  $1234+$2345/345+456: abc
-            pass
-        elif reAddressVia.match(line):
-            #  $1234/2345/VIA1+3: abc
-            pass
-        elif reAsm.match(line):
-            # LDA $...
-            pass
-        elif reAsmAddressBlock.match(line):
-            #             $1234 $2345...
-            pass
-        elif reInfoText.match(line):
-            #    This is link body text, but with 3 spaces indent...
-            pass
-        elif reBodyText.match(line):
-            #   This is a (piece) of, text, with #1 numbers...
-            pass
-        elif reEmptyLine.match(line):
-            # <empty line>
-            # TODO take action based on previous line
-            pass
+        for rek in remap:
+            if remap[rek].match(line):
+                res.append((rek, line))
+                break
         else:
-            print(line)
+            res.append(('unidentified', line))
+            
+    return res
+
+def output_markdown(lines):
+    res = []
+    
+    last_line_type = None
+    for line in lines:
+        if line[0] == 'error':
+            res.append("## " + line[1]) # TODO
+            res.append('')
+        elif line[0] == 'table_row':
+            if last_line_type == 'table_row':
+                res.append(line[1])
+            else:
+                pass # Skip first row, it is empty
+        elif line[0] == 'table_end':
+            res.append('') # TODO
+        elif line[0] == 'heading_row':
+            res.append(line[1]) # TODO
+        elif line[0] == 'heading_end':
+            res.append('') # TODO
+        elif line[0] == 'memory_line':
+            res.append(line[1]) # TODO
+        elif line[0] == 'jump':
+            res.append(line[1])
+            res.append('')
+        elif line[0] == 'rom_reference':
+            res.append(line[1]) # TODO
+        elif line[0] == 'address':
+            res.append(line[1]) # TODO
+        elif line[0] == 'address_range':
+            res.append(line[1]) # TODO
+        elif line[0] == 'address_block':
+            res.append(line[1]) # TODO
+        elif line[0] == 'address_via':
+            res.append(line[1]) # TODO
+        elif line[0] == 'asm':
+            res.append(line[1]) # TODO
+        elif line[0] == 'info_text':
+            res.append(line[1]) # TODO
+        elif line[0] == 'body_text':
+            for l in textwrap.wrap(line[1], width=80):
+                res.append(l)
+            res.append('')
+        elif line[0] == 'unidentified':
+            res.append('>>>>>> UNIDENTIFIED')
+            res.append(line[1])
+            res.append('<<<<<<')
+        else:
+            raise Exception('Unknown line type "%s"' % (line[0]))
+        
+        last_line_type = line[0]
+        
+    return "\n".join(res)
+
+def table_split(text):
+    """
+        Helper to split a table row into a list of stripped strings
+    """
+    t = text.strip()
+    assert t[0] == '|'
+    assert t[-1] == '|'
+    t = t[1:-1]
+    texts = []
+    for t2 in t.split('|'):
+        texts.append(t2.strip())
+    return texts
+
+def table_join(texts):
+    """
+        Helper to join table strings into a table row
+    """
+    return '|' + '|'.join(texts) + '|'
+
+def simplify_lines(lines):
+    """
+        Performs the following transformations on the given lines:
+        
+        - Transform table_break and table_row into table_row lines ended by a table_end
+        - Transform heading_break and heading_row into heading_row lines ended by a heading_end
+        - Merges any jump_next following a jump line
+        - Merges any asm_address_block following an asm line
+        - Merges consecutive body_text lines
+        - Strips out any empty lines
+    """
+    res = []
+    
+    last_line = (None, None)
+    for line in lines:
+        if len(res) > 0:
+            # Close tables and headings
+            if res[-1][0] == 'table_row' and line[0] not in ['table_row', 'table_break']:
+                res.append(('table_end', None))
+            elif res[-1][0] == 'heading_row' and line[0] not in ['heading_row', 'heading_break']:
+                res.append(('heading_end', None))
+        
+        if line[0] == 'error':
+            res.append((line[0], line[1].strip())) # TODO
+        elif line[0] == 'table_break':
+            # If this is the first line of table, initiate an empty row, otherwise, skip
+            if res[-1][0] != 'table_row':
+                text = line[1]
+                text = text.replace(' ', '')
+                text = text.replace('-', '')
+                text = text.replace('+', '|')
+                res.append(('table_row', text))
+        elif line[0] == 'table_row':
+            # Merge consecutive table_rows if there is at least one empty column, 
+            # otherwise add a new one (e.g. after a table_break)
+            if last_line[0] == 'table_row' and res[-1][0] == 'table_row':
+                rts = table_split(res[-1][1])
+                lts = table_split(line[1])
+                assert len(lts) == len(rts)
+                ts = []
+                has_zero = False
+                for ii in range(len(lts)):
+                    ts.append(' '.join([rts[ii], lts[ii]]))
+                    if len(lts[ii]) == 0:
+                        has_zero = True
+                if has_zero:
+                    res[-1] = (res[-1][0], table_join(ts))
+                else:
+                    res.append((line[0], table_join(lts)))
+            else:
+                ts = table_split(line[1])
+                res.append((line[0], table_join(ts)))
+        elif line[0] == 'heading_break':
+            pass #TODO
+        elif line[0] == 'heading_row':
+            res.append(line) # TODO
+        elif line[0] == 'memory_line':
+            res.append(line) # TODO
+        elif line[0] == 'jump':
+            # Append as is
+            res.append(line)
+        elif line[0] == 'jump_next':
+            # Strip and merge with prior 'jump'
+            if last_line[0] in ['jump', 'jump_next'] and res[-1][0] != 'jump':
+                raise Exception('Orphaned "just_next" encountered')
+            
+            res[-1] = (res[-1][0], ' '.join([res[-1][1], line[1].strip()]))
+        elif line[0] == 'rom_reference':
+            # Append as is
+            res.append(line)
+        elif line[0] == 'address':
+            res.append(line) # TODO
+        elif line[0] == 'address_range':
+            res.append(line) # TODO
+        elif line[0] == 'address_block':
+            res.append(line) # TODO
+        elif line[0] == 'address_via':
+            res.append(line) # TODO
+        elif line[0] == 'asm':
+            # Strip spaces from left
+            res.append((line[0], line[1].lstrip()))
+        elif line[0] == 'asm_address_block':
+            # Strip and merge with prior 'asm'
+            if last_line in ['asm', 'asm_address_block'] and res[-1][0] != 'asm':
+                raise Exception('Orphaned "asm_address_block" encountered')
+            
+            res[-1] = (res[-1][0], ' '.join([res[-1][1], line[1].strip()]))
+        elif line[0] == 'info_text':
+            # Strip lines
+            text = line[1].strip()
+            res.append((line[0], text))
+        elif line[0] == 'body_text':
+            # Strip lines, merge consecutive lines
+            text = line[1].strip()
+            if last_line[0] == 'body_text':
+                res[-1] = (line[0], ' '.join([res[-1][1], text]))
+            else:
+                res.append((line[0], text))
+        elif line[0] == 'empty_line':
+            pass
+        elif line[0] == 'unidentified':
+            # Merge with preserved line-breaks
+            if last_line[0] == 'unidentified':
+                res[-1] = (res[-1][0], '\n'.join([res[-1][1], line[1]]))
+            else:
+                res.append(line)
+        else:
+            raise Exception('Unknown line type "%s"' % (line[0]))
+        
+        last_line = line
+
+    return res
 
 if __name__ == '__main__':
     if len(sys.argv) == 1:
