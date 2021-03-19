@@ -18,7 +18,8 @@ tables, merging lines, etc.
 
 - There are a few unidentified line types still
 - The matching is only good on the aay1541.HTM
-- The regular expressions needs to define groups, and the groups should be used when rendering the markdown
+- There needs some word wrapping magic for asm and jump lines (ending with many data words)
+- The tables need work - should the old width and line-breaks be kept? Most probably!
 
 # Hacking
 

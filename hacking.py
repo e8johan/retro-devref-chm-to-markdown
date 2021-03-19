@@ -7,8 +7,8 @@ remap = {
     'error': re.compile('^\s+Error \#\d+:.*$'),
     'table_break': re.compile('^\s*\+[+-]+\+$'),
     'table_row': re.compile('^\s*\|.+\|$'),
-    'heading_break': re.compile('^\s+\+\-+$'),
-    'heading_row': re.compile('^\s+\|.*$'),
+    'toc_break': re.compile('^\s+\+\-+$'),
+    'toc_row': re.compile('^\s+\|.*$'),
     'memory_line': re.compile('^[0-9A-F]{4}:\s+.*$'),
     'jump': re.compile('^Jump from \$.*$'),
     'jump_next': re.compile('^\s{10}\$.*$'),
@@ -53,8 +53,13 @@ def output_markdown(lines):
     
     last_line_type = None
     for line in lines:
+        # Insert a blank line after the following types of blocks:
+        if last_line_type != line[0]:
+            if last_line_type in ['memory_line', 'jump', 'rom_reference', 'asm']:
+                res.append('')
+
         if line[0] == 'error':
-            res.append("## " + line[1]) # TODO
+            res.append("### " + line[1]) # TODO
             res.append('')
         elif line[0] == 'table_row':
             if last_line_type == 'table_row':
@@ -62,30 +67,30 @@ def output_markdown(lines):
             else:
                 pass # Skip first row, it is empty
         elif line[0] == 'table_end':
-            res.append('') # TODO
-        elif line[0] == 'heading_row':
-            res.append(line[1]) # TODO
-        elif line[0] == 'heading_end':
+            res.append('')
+        elif line[0] == 'toc_title':
+            res.append('## ' + line[1] + '\n')
+        elif line[0] == 'toc_row':
+            res.append('    ' + line[1])
+        elif line[0] == 'toc_end':
+            res.append('')
+        elif line[0] == 'toc_end':
             res.append('') # TODO
         elif line[0] == 'memory_line':
             res.append(line[1]) # TODO
         elif line[0] == 'jump':
             res.append(line[1])
-            res.append('')
         elif line[0] == 'rom_reference':
             res.append(line[1]) # TODO
         elif line[0] == 'address':
-            res.append(line[1]) # TODO
-        elif line[0] == 'address_range':
-            res.append(line[1]) # TODO
-        elif line[0] == 'address_block':
-            res.append(line[1]) # TODO
-        elif line[0] == 'address_via':
-            res.append(line[1]) # TODO
+            res.append('\n\n### ' + line[1])
+            res.append('')
         elif line[0] == 'asm':
-            res.append(line[1]) # TODO
+            res.append('    ' + line[1])
         elif line[0] == 'info_text':
-            res.append(line[1]) # TODO
+            for l in textwrap.wrap(line[1], width=72):
+                res.append('    ' + l)
+            res.append('')
         elif line[0] == 'body_text':
             for l in textwrap.wrap(line[1], width=80):
                 res.append(l)
@@ -125,22 +130,27 @@ def simplify_lines(lines):
         Performs the following transformations on the given lines:
         
         - Transform table_break and table_row into table_row lines ended by a table_end
-        - Transform heading_break and heading_row into heading_row lines ended by a heading_end
+        - Transform toc_break and toc_row into toc_title and toc_row lines ended by a toc_end
         - Merges any jump_next following a jump line
+        - Merge address, address_block, address_range, and address_via into address
         - Merges any asm_address_block following an asm line
         - Merges consecutive body_text lines
         - Strips out any empty lines
     """
     res = []
     
+    toc_start_index = -1
+    toc_has_title = False
     last_line = (None, None)
     for line in lines:
         if len(res) > 0:
             # Close tables and headings
             if res[-1][0] == 'table_row' and line[0] not in ['table_row', 'table_break']:
                 res.append(('table_end', None))
-            elif res[-1][0] == 'heading_row' and line[0] not in ['heading_row', 'heading_break']:
-                res.append(('heading_end', None))
+            elif res[-1][0] == 'toc_row' and line[0] not in ['toc_row', 'toc_break']:
+                toc_start_index = -1
+                toc_has_title = False
+                res.append(('toc_end', None))
         
         if line[0] == 'error':
             res.append((line[0], line[1].strip())) # TODO
@@ -172,10 +182,19 @@ def simplify_lines(lines):
             else:
                 ts = table_split(line[1])
                 res.append((line[0], table_join(ts)))
-        elif line[0] == 'heading_break':
-            pass #TODO
-        elif line[0] == 'heading_row':
-            res.append(line) # TODO
+        elif line[0] == 'toc_break':
+            text = line[1].strip()
+            res.append(('toc_row', text))
+            if toc_start_index == -1:
+                toc_has_title = False
+                toc_start_index = len(res)-1
+        elif line[0] == 'toc_row':
+            text = line[1].strip()
+            res.append(('toc_row', text))
+            if not toc_has_title and text != '|':
+                toc_has_title = True
+                text = text[1:].strip()
+                res.insert(toc_start_index, ('toc_title', text))
         elif line[0] == 'memory_line':
             res.append(line) # TODO
         elif line[0] == 'jump':
@@ -190,14 +209,8 @@ def simplify_lines(lines):
         elif line[0] == 'rom_reference':
             # Append as is
             res.append(line)
-        elif line[0] == 'address':
-            res.append(line) # TODO
-        elif line[0] == 'address_range':
-            res.append(line) # TODO
-        elif line[0] == 'address_block':
-            res.append(line) # TODO
-        elif line[0] == 'address_via':
-            res.append(line) # TODO
+        elif line[0] in ['address', 'address_range', 'address_block', 'address_via']:
+            res.append(('address', line[1]))
         elif line[0] == 'asm':
             # Strip spaces from left
             res.append((line[0], line[1].lstrip()))
@@ -208,9 +221,12 @@ def simplify_lines(lines):
             
             res[-1] = (res[-1][0], ' '.join([res[-1][1], line[1].strip()]))
         elif line[0] == 'info_text':
-            # Strip lines
+            # Strip lines, merge consecutive lines
             text = line[1].strip()
-            res.append((line[0], text))
+            if last_line[0] == 'info_text':
+                res[-1] = (line[0], ' '.join([res[-1][1], text]))
+            else:
+                res.append((line[0], text))
         elif line[0] == 'body_text':
             # Strip lines, merge consecutive lines
             text = line[1].strip()
